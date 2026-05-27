@@ -1,0 +1,8 @@
+Flask
+Flask-Cors
+Flask-SQLAlchemy
+Flask-SocketIO
+APScheduler
+ping3
+requests
+python-dotenv

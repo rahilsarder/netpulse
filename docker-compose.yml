@@ -1,0 +1,34 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    container_name: netpulse-backend
+    env_file:
+      - backend/.env
+    environment:
+      DATABASE_URL: sqlite:////data/netpulse.db
+    volumes:
+      - netpulse_data:/data
+    ports:
+      - "5000:5000"
+    cap_add:
+      - NET_RAW
+      - NET_ADMIN
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    container_name: netpulse-frontend
+    environment:
+      VITE_API_BASE_URL: http://localhost:5000/api
+    depends_on:
+      - backend
+    ports:
+      - "5173:5173"
+    restart: unless-stopped
+
+volumes:
+  netpulse_data:
