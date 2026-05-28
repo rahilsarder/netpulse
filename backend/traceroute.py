@@ -77,26 +77,44 @@ class TraceRunner:
         commands = [
             ["traceroute", "-n", "-q", "1", "-m", "20", target],
             ["traceroute", target],
+            ["tracepath", "-n", target],
         ]
+        failure_outputs: list[str] = []
 
         for command in commands:
             try:
                 code, output = self._run_command(command, timeout=30)
                 if code == 0 and output:
-                    summary = self._build_summary(output, tool_name="traceroute")
+                    tool_name = command[0]
+                    summary = self._build_summary(output, tool_name=tool_name)
                     return TraceResult(summary=f"{summary} (fallback from mtr)", output=output)
                 if output:
-                    return TraceResult(
-                        summary="traceroute failed after mtr fallback",
-                        output=output,
-                    )
+                    failure_outputs.append(f"$ {' '.join(command)}\n{output}")
             except FileNotFoundError:
                 continue
             except subprocess.TimeoutExpired:
                 return TraceResult(
-                    summary="traceroute timeout after mtr fallback",
-                    output="traceroute execution timed out after 30 seconds.",
+                    summary=f"{command[0]} timeout after mtr fallback",
+                    output=f"{command[0]} execution timed out after 30 seconds.",
                 )
+
+        if failure_outputs:
+            combined_output = "\n\n".join(failure_outputs)
+            if self._looks_like_socket_error(combined_output):
+                return TraceResult(
+                    summary="trace failed due to container/network permissions",
+                    output=(
+                        f"{combined_output}\n\n"
+                        "Likely cause: missing raw socket capability in runtime.\n"
+                        "Docker fix: add cap_add NET_RAW (and optionally NET_ADMIN) "
+                        "or run privileged for testing."
+                    ),
+                )
+            return TraceResult(
+                summary="trace fallback commands failed",
+                output=combined_output,
+            )
+
         return None
 
     @staticmethod

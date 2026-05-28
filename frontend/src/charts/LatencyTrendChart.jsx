@@ -8,6 +8,14 @@ import {
   YAxis,
 } from "recharts";
 
+function parseAsUtc(dateString) {
+  if (!dateString) {
+    return null;
+  }
+  const hasTimezone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(dateString);
+  return new Date(hasTimezone ? dateString : `${dateString}Z`);
+}
+
 function formatTick(timestamp, selectedDuration) {
   const date = new Date(timestamp);
   if (selectedDuration === "1w" || selectedDuration === "1m") {
@@ -27,9 +35,13 @@ export default function LatencyTrendChart({
 }) {
   const points = results
     .slice()
-    .sort((left, right) => new Date(left.checked_at).getTime() - new Date(right.checked_at).getTime())
+    .sort((left, right) => {
+      const leftDate = parseAsUtc(left.checked_at);
+      const rightDate = parseAsUtc(right.checked_at);
+      return (leftDate?.getTime() ?? 0) - (rightDate?.getTime() ?? 0);
+    })
     .map((item) => ({
-      checkedAtTs: new Date(item.checked_at).getTime(),
+      checkedAtTs: parseAsUtc(item.checked_at)?.getTime() ?? 0,
       latency: item.latency_avg ?? 0,
       packetLoss: item.packet_loss,
     }));
