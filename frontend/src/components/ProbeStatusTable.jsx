@@ -1,3 +1,5 @@
+import { formatServerTime } from "../utils/datetime";
+
 const STATUS_COLOR_CLASS = {
   UP: "bg-emerald-500/20 text-emerald-300 border-emerald-400/40",
   DEGRADED: "bg-amber-500/20 text-amber-300 border-amber-400/40",
@@ -81,7 +83,11 @@ export default function ProbeStatusTable({
                   <td className="px-4 py-3">{result ? `${result.packet_loss}%` : "-"}</td>
                   <td className="px-4 py-3">
                     {result?.checked_at
-                      ? new Date(result.checked_at).toLocaleTimeString()
+                      ? formatServerTime(result.checked_at, {
+                          hour: "2-digit",
+                          minute: "2-digit",
+                          second: "2-digit",
+                        })
                       : "No data"}
                   </td>
                   {canManageProbes ? (

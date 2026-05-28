@@ -10,6 +10,7 @@ from flask_cors import CORS
 from config import settings
 from database import db
 from models import (
+    AppSetting,
     Incident,
     Probe,
     ProbeResult,
@@ -235,6 +236,31 @@ def register_routes(app: Flask) -> None:
             }
         )
 
+    @app.get("/api/settings/alerts")
+    def get_alert_settings() -> Any:
+        persist_seconds = _get_setting_int(
+            "degraded_alert_persist_seconds",
+            settings.degraded_alert_persist_seconds,
+            min_value=10,
+            max_value=24 * 60 * 60,
+        )
+        return jsonify({"degraded_alert_persist_seconds": persist_seconds})
+
+    @app.put("/api/settings/alerts")
+    def update_alert_settings() -> Any:
+        payload = request.get_json(silent=True) or {}
+        if "degraded_alert_persist_seconds" not in payload:
+            return jsonify({"error": "degraded_alert_persist_seconds is required"}), 400
+
+        try:
+            persist_seconds = int(payload["degraded_alert_persist_seconds"])
+        except (TypeError, ValueError):
+            return jsonify({"error": "degraded_alert_persist_seconds must be an integer"}), 400
+
+        persist_seconds = max(10, min(persist_seconds, 24 * 60 * 60))
+        _upsert_setting("degraded_alert_persist_seconds", str(persist_seconds))
+        return jsonify({"degraded_alert_persist_seconds": persist_seconds})
+
 
 def _latest_results_by_probe_source() -> List[Dict[str, Any]]:
     rows = (
@@ -256,6 +282,26 @@ def _seed_default_source() -> None:
     if not existing:
         db.session.add(ProbeSource(name="default", enabled=True))
         db.session.commit()
+
+
+def _get_setting_int(key: str, default: int, min_value: int, max_value: int) -> int:
+    setting = AppSetting.query.filter_by(key=key).first()
+    if not setting:
+        return default
+    try:
+        parsed = int(setting.value)
+        return max(min_value, min(parsed, max_value))
+    except (TypeError, ValueError):
+        return default
+
+
+def _upsert_setting(key: str, value: str) -> None:
+    setting = AppSetting.query.filter_by(key=key).first()
+    if setting:
+        setting.value = value
+    else:
+        db.session.add(AppSetting(key=key, value=value))
+    db.session.commit()
 
 
 def _ensure_scheduler_started(app: Flask) -> None:
@@ -285,7 +331,7 @@ if __name__ == "__main__":
     socketio.run(
         app,
         host="0.0.0.0",
-        port=5001,
+        port=settings.app_port,
         debug=False,
         allow_unsafe_werkzeug=True,
     )

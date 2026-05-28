@@ -175,3 +175,20 @@ class TelegramDeliveryLog(db.Model):
     response = db.Column(db.Text, nullable=True)
     error = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AppSetting(db.Model, TimestampMixin):
+    __tablename__ = "app_settings"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(120), nullable=False, unique=True, index=True)
+    value = db.Column(db.String(255), nullable=False)
+
+    def to_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "key": self.key,
+            "value": self.value,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+        }

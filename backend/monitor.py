@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import statistics
 from dataclasses import dataclass
 from datetime import datetime, timedelta
@@ -11,6 +12,7 @@ from ping3 import ping
 from config import settings
 from database import db
 from models import (
+    AppSetting,
     Incident,
     Probe,
     ProbeResult,
@@ -206,6 +208,7 @@ class MonitorService:
     ) -> Optional[str]:
         key = (probe.id, source)
         state = self._state.setdefault(key, ThresholdState())
+        consecutive_needed = self._required_consecutive_breaches(probe.probe_interval)
 
         if result.packet_loss >= 100:
             state.down_breaches += 1
@@ -227,11 +230,31 @@ class MonitorService:
         else:
             state.packet_loss_breaches = 0
 
-        if state.latency_breaches >= 3:
+        if state.latency_breaches >= consecutive_needed:
             return "HIGH_LATENCY"
-        if state.packet_loss_breaches >= 2:
+        if state.packet_loss_breaches >= consecutive_needed:
             return "PACKET_LOSS"
         return None
+
+    @staticmethod
+    def _required_consecutive_breaches(probe_interval_seconds: int) -> int:
+        safe_interval = max(1, int(probe_interval_seconds))
+        persist_seconds = MonitorService._get_degraded_persist_seconds()
+        return max(
+            1, math.ceil(persist_seconds / safe_interval)
+        )
+
+    @staticmethod
+    def _get_degraded_persist_seconds() -> int:
+        setting = AppSetting.query.filter_by(key="degraded_alert_persist_seconds").first()
+        if not setting:
+            return settings.degraded_alert_persist_seconds
+
+        try:
+            parsed = int(setting.value)
+            return max(10, min(parsed, 24 * 60 * 60))
+        except (TypeError, ValueError):
+            return settings.degraded_alert_persist_seconds
 
     def _resolve_incident(self, incident: Incident, probe: Probe, source: str) -> None:
         incident.status = "RESOLVED"

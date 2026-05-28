@@ -11,6 +11,11 @@ export default function ProbeManagementModal({
   onDeleteProbe,
   isSubmitting,
   mutationError,
+  alertPersistSeconds,
+  onChangeAlertPersistSeconds,
+  onSaveAlertSettings,
+  isSavingAlertSettings,
+  alertSettingsError,
 }) {
   if (!isOpen) {
     return null;
@@ -41,6 +46,40 @@ export default function ProbeManagementModal({
         </div>
 
         <div className="grid gap-4">
+          <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-4">
+            <h3 className="text-sm font-semibold text-slate-100">Alert Timing</h3>
+            <p className="mt-1 text-xs text-slate-400">
+              Degraded alerts (high latency/packet loss) trigger only when issue persists for this
+              many seconds.
+            </p>
+
+            {alertSettingsError ? (
+              <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+                {alertSettingsError}
+              </div>
+            ) : null}
+
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={10}
+                max={86400}
+                value={alertPersistSeconds}
+                onChange={(event) => onChangeAlertPersistSeconds(Number(event.target.value))}
+                className="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+              />
+              <span className="text-xs text-slate-400">seconds</span>
+              <button
+                type="button"
+                onClick={onSaveAlertSettings}
+                disabled={isSavingAlertSettings}
+                className="rounded-lg border border-cyan-400/40 bg-cyan-500/10 px-3 py-2 text-xs text-cyan-300 hover:bg-cyan-500/20 disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {isSavingAlertSettings ? "Saving..." : "Save timing"}
+              </button>
+            </div>
+          </div>
+
           <ProbeFormCard
             activeProbe={activeProbe}
             onSubmit={onSubmitProbe}

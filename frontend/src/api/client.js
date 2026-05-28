@@ -23,6 +23,12 @@ export const apiClient = {
       `/probes/${probeId}/history?minutes=${minutes}&source=${encodeURIComponent(source)}`
     ),
   getIncidents: (status = "ACTIVE") => request(`/incidents?status=${status}`),
+  getAlertSettings: () => request("/settings/alerts"),
+  updateAlertSettings: (payload) =>
+    request("/settings/alerts", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
   runMonitorOnce: () => request("/monitor/run-once", { method: "POST" }),
   createProbe: (payload) =>
     request("/probes", {

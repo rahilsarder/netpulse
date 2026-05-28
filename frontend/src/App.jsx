@@ -33,6 +33,33 @@ export default function App() {
   const [selectedProbeHistory, setSelectedProbeHistory] = useState([]);
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(null);
+  const [alertPersistSeconds, setAlertPersistSeconds] = useState(60);
+  const [isSavingAlertSettings, setIsSavingAlertSettings] = useState(false);
+  const [alertSettingsError, setAlertSettingsError] = useState(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    async function loadAlertSettings() {
+      try {
+        const settingsPayload = await apiClient.getAlertSettings();
+        if (!cancelled) {
+          setAlertPersistSeconds(settingsPayload.degraded_alert_persist_seconds ?? 60);
+        }
+      } catch (loadError) {
+        if (!cancelled) {
+          setAlertSettingsError(
+            loadError instanceof Error ? loadError.message : "Failed to load alert settings."
+          );
+        }
+      }
+    }
+
+    loadAlertSettings();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   useEffect(() => {
     if (!probes.length) {
@@ -153,6 +180,25 @@ export default function App() {
     }
   }
 
+  async function handleSaveAlertSettings() {
+    const sanitizedSeconds = Math.max(10, Math.min(Number(alertPersistSeconds) || 60, 86400));
+    setAlertPersistSeconds(sanitizedSeconds);
+    setAlertSettingsError(null);
+    setIsSavingAlertSettings(true);
+    try {
+      const payload = await apiClient.updateAlertSettings({
+        degraded_alert_persist_seconds: sanitizedSeconds,
+      });
+      setAlertPersistSeconds(payload.degraded_alert_persist_seconds ?? sanitizedSeconds);
+    } catch (saveError) {
+      setAlertSettingsError(
+        saveError instanceof Error ? saveError.message : "Failed to save alert settings."
+      );
+    } finally {
+      setIsSavingAlertSettings(false);
+    }
+  }
+
   return (
     <main className="min-h-screen bg-gradient-to-b from-slate-950 via-slate-950 to-slate-900 px-4 py-6 text-slate-100 md:px-8">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6">
@@ -258,6 +304,11 @@ export default function App() {
         onDeleteProbe={handleDeleteProbe}
         isSubmitting={isSubmittingProbe}
         mutationError={mutationError}
+        alertPersistSeconds={alertPersistSeconds}
+        onChangeAlertPersistSeconds={setAlertPersistSeconds}
+        onSaveAlertSettings={handleSaveAlertSettings}
+        isSavingAlertSettings={isSavingAlertSettings}
+        alertSettingsError={alertSettingsError}
       />
     </main>
   );

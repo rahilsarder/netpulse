@@ -1,3 +1,5 @@
+import { formatServerDateTime } from "../utils/datetime";
+
 export default function IncidentsPanel({ incidents }) {
   return (
     <div className="rounded-2xl border border-slate-700 bg-slate-900/70 p-5 shadow-glow backdrop-blur-sm">
@@ -13,7 +15,7 @@ export default function IncidentsPanel({ incidents }) {
               </p>
               <p className="mt-1 text-xs text-slate-400">
                 Source: {incident.source} | Started:{" "}
-                {new Date(incident.started_at).toLocaleString()}
+                {formatServerDateTime(incident.started_at)}
               </p>
             </div>
           ))}

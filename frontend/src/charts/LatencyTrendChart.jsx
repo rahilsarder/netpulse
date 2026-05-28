@@ -7,14 +7,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
-function parseAsUtc(dateString) {
-  if (!dateString) {
-    return null;
-  }
-  const hasTimezone = /[zZ]$|[+-]\d{2}:\d{2}$/.test(dateString);
-  return new Date(hasTimezone ? dateString : `${dateString}Z`);
-}
+import { parseServerTimestamp } from "../utils/datetime";
 
 function formatTick(timestamp, selectedDuration) {
   const date = new Date(timestamp);
@@ -36,12 +29,12 @@ export default function LatencyTrendChart({
   const points = results
     .slice()
     .sort((left, right) => {
-      const leftDate = parseAsUtc(left.checked_at);
-      const rightDate = parseAsUtc(right.checked_at);
+      const leftDate = parseServerTimestamp(left.checked_at);
+      const rightDate = parseServerTimestamp(right.checked_at);
       return (leftDate?.getTime() ?? 0) - (rightDate?.getTime() ?? 0);
     })
     .map((item) => ({
-      checkedAtTs: parseAsUtc(item.checked_at)?.getTime() ?? 0,
+      checkedAtTs: parseServerTimestamp(item.checked_at)?.getTime() ?? 0,
       latency: item.latency_avg ?? 0,
       packetLoss: item.packet_loss,
     }));
