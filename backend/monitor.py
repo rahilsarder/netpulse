@@ -30,11 +30,13 @@ class ThresholdState:
     latency_breaches: int = 0
     packet_loss_breaches: int = 0
     down_breaches: int = 0
+    latency_ema: Optional[float] = None
 
 
 class MonitorService:
     _TRACE_MAX_LINES = 14
     _TRACE_MAX_CHARS = 3000
+    _LATENCY_EMA_ALPHA = 0.25
 
     def __init__(self) -> None:
         self._state: Dict[Tuple[int, str], ThresholdState] = {}
@@ -132,11 +134,8 @@ class MonitorService:
 
         sorted_latencies = sorted(numeric_latencies)
         latency_median = statistics.median(sorted_latencies)
-        trimmed_latencies = sorted_latencies
-        # Trim one low/high outlier when enough samples are available.
-        if len(sorted_latencies) >= 5:
-            trimmed_latencies = sorted_latencies[1:-1]
-        latency_avg = sum(trimmed_latencies) / len(trimmed_latencies)
+        filtered_latencies = MonitorService._remove_latency_outliers(sorted_latencies)
+        latency_avg = sum(filtered_latencies) / len(filtered_latencies)
 
         return {
             "latency_min": round(min(numeric_latencies), 2),
@@ -146,6 +145,30 @@ class MonitorService:
             "jitter": round(jitter, 2),
             "packet_loss": packet_loss,
         }
+
+    @staticmethod
+    def _remove_latency_outliers(sorted_latencies: List[float]) -> List[float]:
+        if len(sorted_latencies) < 5:
+            return sorted_latencies
+
+        midpoint = len(sorted_latencies) // 2
+        lower_half = sorted_latencies[:midpoint]
+        upper_half = sorted_latencies[midpoint + (0 if len(sorted_latencies) % 2 == 0 else 1) :]
+        if not lower_half or not upper_half:
+            return sorted_latencies
+
+        q1 = statistics.median(lower_half)
+        q3 = statistics.median(upper_half)
+        iqr = max(0.0, q3 - q1)
+        upper_fence = q3 + (1.5 * iqr)
+        lower_fence = max(0.0, q1 - (1.5 * iqr))
+
+        filtered = [
+            value
+            for value in sorted_latencies
+            if lower_fence <= value <= upper_fence
+        ]
+        return filtered or sorted_latencies
 
     @staticmethod
     def _determine_status(
@@ -230,7 +253,8 @@ class MonitorService:
         state.down_breaches = 0
 
         latency_reference = self._extract_latency_reference(result)
-        if latency_reference is not None and latency_reference > probe.latency_threshold:
+        smoothed_latency = self._smooth_latency_reference(state, latency_reference)
+        if smoothed_latency is not None and smoothed_latency > probe.latency_threshold:
             state.latency_breaches += 1
         else:
             state.latency_breaches = 0
@@ -259,6 +283,20 @@ class MonitorService:
         setting = AppSetting.query.filter_by(key="degraded_alert_persist_seconds").first()
         if not setting:
             return settings.degraded_alert_persist_seconds
+
+    def _smooth_latency_reference(
+        self, state: ThresholdState, latency_reference: Optional[float]
+    ) -> Optional[float]:
+        if latency_reference is None:
+            return state.latency_ema
+
+        if state.latency_ema is None:
+            state.latency_ema = latency_reference
+            return state.latency_ema
+
+        alpha = self._LATENCY_EMA_ALPHA
+        state.latency_ema = (alpha * latency_reference) + ((1 - alpha) * state.latency_ema)
+        return state.latency_ema
 
         try:
             parsed = int(setting.value)
