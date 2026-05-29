@@ -274,14 +274,17 @@ class MonitorService:
     def _required_consecutive_breaches(probe_interval_seconds: int) -> int:
         safe_interval = max(1, int(probe_interval_seconds))
         persist_seconds = MonitorService._get_degraded_persist_seconds()
-        return max(
-            1, math.ceil(persist_seconds / safe_interval)
-        )
+        return max(1, math.ceil(persist_seconds / safe_interval))
 
     @staticmethod
     def _get_degraded_persist_seconds() -> int:
         setting = AppSetting.query.filter_by(key="degraded_alert_persist_seconds").first()
         if not setting:
+            return settings.degraded_alert_persist_seconds
+        try:
+            parsed = int(setting.value)
+            return max(10, min(parsed, 24 * 60 * 60))
+        except (TypeError, ValueError):
             return settings.degraded_alert_persist_seconds
 
     def _smooth_latency_reference(
@@ -297,12 +300,6 @@ class MonitorService:
         alpha = self._LATENCY_EMA_ALPHA
         state.latency_ema = (alpha * latency_reference) + ((1 - alpha) * state.latency_ema)
         return state.latency_ema
-
-        try:
-            parsed = int(setting.value)
-            return max(10, min(parsed, 24 * 60 * 60))
-        except (TypeError, ValueError):
-            return settings.degraded_alert_persist_seconds
 
     @staticmethod
     def _get_incident_reminder_minutes() -> int:
