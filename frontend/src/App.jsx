@@ -34,6 +34,7 @@ export default function App() {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const [historyError, setHistoryError] = useState(null);
   const [alertPersistSeconds, setAlertPersistSeconds] = useState(60);
+  const [incidentReminderMinutes, setIncidentReminderMinutes] = useState(0);
   const [isSavingAlertSettings, setIsSavingAlertSettings] = useState(false);
   const [alertSettingsError, setAlertSettingsError] = useState(null);
 
@@ -45,6 +46,7 @@ export default function App() {
         const settingsPayload = await apiClient.getAlertSettings();
         if (!cancelled) {
           setAlertPersistSeconds(settingsPayload.degraded_alert_persist_seconds ?? 60);
+          setIncidentReminderMinutes(settingsPayload.incident_reminder_minutes ?? 0);
         }
       } catch (loadError) {
         if (!cancelled) {
@@ -182,14 +184,21 @@ export default function App() {
 
   async function handleSaveAlertSettings() {
     const sanitizedSeconds = Math.max(10, Math.min(Number(alertPersistSeconds) || 60, 86400));
+    const sanitizedReminderMinutes = Math.max(
+      0,
+      Math.min(Number(incidentReminderMinutes) || 0, 1440)
+    );
     setAlertPersistSeconds(sanitizedSeconds);
+    setIncidentReminderMinutes(sanitizedReminderMinutes);
     setAlertSettingsError(null);
     setIsSavingAlertSettings(true);
     try {
       const payload = await apiClient.updateAlertSettings({
         degraded_alert_persist_seconds: sanitizedSeconds,
+        incident_reminder_minutes: sanitizedReminderMinutes,
       });
       setAlertPersistSeconds(payload.degraded_alert_persist_seconds ?? sanitizedSeconds);
+      setIncidentReminderMinutes(payload.incident_reminder_minutes ?? sanitizedReminderMinutes);
     } catch (saveError) {
       setAlertSettingsError(
         saveError instanceof Error ? saveError.message : "Failed to save alert settings."
@@ -306,6 +315,8 @@ export default function App() {
         mutationError={mutationError}
         alertPersistSeconds={alertPersistSeconds}
         onChangeAlertPersistSeconds={setAlertPersistSeconds}
+        incidentReminderMinutes={incidentReminderMinutes}
+        onChangeIncidentReminderMinutes={setIncidentReminderMinutes}
         onSaveAlertSettings={handleSaveAlertSettings}
         isSavingAlertSettings={isSavingAlertSettings}
         alertSettingsError={alertSettingsError}

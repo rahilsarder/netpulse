@@ -20,6 +20,7 @@ class Settings:
     degraded_alert_persist_seconds: int = int(
         os.getenv("DEGRADED_ALERT_PERSIST_SECONDS", "60")
     )
+    incident_reminder_minutes: int = int(os.getenv("INCIDENT_REMINDER_MINUTES", "0"))
     ping_count: int = int(os.getenv("PING_COUNT", "5"))
     ping_timeout_seconds: float = float(os.getenv("PING_TIMEOUT_SECONDS", "1.5"))
     incident_alert_cooldown_seconds: int = int(

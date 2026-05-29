@@ -67,7 +67,7 @@ class MonitorService:
         latencies = self._ping_batch(probe.host, settings.ping_count)
         metrics = self._calculate_metrics(latencies)
         status = self._determine_status(
-            latency_avg=metrics["latency_avg"],
+            latency_reference=metrics["latency_median"],
             packet_loss=metrics["packet_loss"],
             latency_threshold=probe.latency_threshold,
             packet_loss_threshold=probe.packet_loss_threshold,
@@ -130,17 +130,26 @@ class MonitorService:
         if len(numeric_latencies) > 1:
             jitter = statistics.pstdev(numeric_latencies)
 
+        sorted_latencies = sorted(numeric_latencies)
+        latency_median = statistics.median(sorted_latencies)
+        trimmed_latencies = sorted_latencies
+        # Trim one low/high outlier when enough samples are available.
+        if len(sorted_latencies) >= 5:
+            trimmed_latencies = sorted_latencies[1:-1]
+        latency_avg = sum(trimmed_latencies) / len(trimmed_latencies)
+
         return {
             "latency_min": round(min(numeric_latencies), 2),
-            "latency_avg": round(sum(numeric_latencies) / len(numeric_latencies), 2),
+            "latency_avg": round(latency_avg, 2),
             "latency_max": round(max(numeric_latencies), 2),
+            "latency_median": round(latency_median, 2),
             "jitter": round(jitter, 2),
             "packet_loss": packet_loss,
         }
 
     @staticmethod
     def _determine_status(
-        latency_avg: Optional[float],
+        latency_reference: Optional[float],
         packet_loss: float,
         latency_threshold: float,
         packet_loss_threshold: float,
@@ -149,7 +158,7 @@ class MonitorService:
             return "DOWN"
         if packet_loss > packet_loss_threshold:
             return "DEGRADED"
-        if latency_avg is not None and latency_avg > latency_threshold:
+        if latency_reference is not None and latency_reference > latency_threshold:
             return "DEGRADED"
         return "UP"
 
@@ -167,7 +176,7 @@ class MonitorService:
             return
 
         if incident and incident.issue_type == issue_type:
-            self._notify_with_cooldown(incident, probe, source, result, is_recovery=False)
+            self._send_incident_reminder_if_due(incident, probe, source, result)
             return
 
         if incident and incident.issue_type != issue_type:
@@ -220,7 +229,8 @@ class MonitorService:
 
         state.down_breaches = 0
 
-        if result.latency_avg is not None and result.latency_avg > probe.latency_threshold:
+        latency_reference = self._extract_latency_reference(result)
+        if latency_reference is not None and latency_reference > probe.latency_threshold:
             state.latency_breaches += 1
         else:
             state.latency_breaches = 0
@@ -255,6 +265,36 @@ class MonitorService:
             return max(10, min(parsed, 24 * 60 * 60))
         except (TypeError, ValueError):
             return settings.degraded_alert_persist_seconds
+
+    @staticmethod
+    def _get_incident_reminder_minutes() -> int:
+        setting = AppSetting.query.filter_by(key="incident_reminder_minutes").first()
+        if not setting:
+            return settings.incident_reminder_minutes
+
+        try:
+            parsed = int(setting.value)
+            return max(0, min(parsed, 24 * 60))
+        except (TypeError, ValueError):
+            return settings.incident_reminder_minutes
+
+    @staticmethod
+    def _extract_latency_reference(result: ProbeResult) -> Optional[float]:
+        # Use median of raw ping samples for incident decisions to reduce
+        # sensitivity to single-sample spikes.
+        if not result.raw_latencies:
+            return result.latency_avg
+        try:
+            values = [
+                float(value)
+                for value in result.raw_latencies.split(",")
+                if value is not None and value != ""
+            ]
+            if not values:
+                return result.latency_avg
+            return statistics.median(values)
+        except (TypeError, ValueError):
+            return result.latency_avg
 
     def _resolve_incident(self, incident: Incident, probe: Probe, source: str) -> None:
         incident.status = "RESOLVED"
@@ -336,6 +376,42 @@ class MonitorService:
         self._notifier.send_message(
             message, message_type="TRACE_REPORT", incident_id=incident.id
         )
+
+    def _send_incident_reminder_if_due(
+        self,
+        incident: Incident,
+        probe: Probe,
+        source: str,
+        result: ProbeResult,
+    ) -> None:
+        reminder_minutes = self._get_incident_reminder_minutes()
+        if reminder_minutes <= 0:
+            return
+
+        now = datetime.utcnow()
+        if incident.last_notification_at and now - incident.last_notification_at < timedelta(
+            minutes=reminder_minutes
+        ):
+            return
+
+        reminder_message = (
+            "🔔 INCIDENT REMINDER\n\n"
+            f"Target: {probe.name}\n"
+            f"IP/Host: {probe.host}\n"
+            f"Group: {probe.group}\n"
+            f"Source: {source}\n\n"
+            f"Status: {incident.issue_type}\n"
+            f"Still ongoing since: {incident.started_at.isoformat()} UTC\n"
+            f"Current average latency: {result.latency_avg} ms\n"
+            f"Current maximum latency: {result.latency_max} ms\n"
+            f"Current packet loss: {result.packet_loss}%\n"
+            f"Current jitter: {result.jitter} ms"
+        )
+        self._notifier.send_message(
+            reminder_message, message_type="INCIDENT_REMINDER", incident_id=incident.id
+        )
+        incident.last_notification_at = now
+        db.session.commit()
 
     def run_cycle_safe(self) -> None:
         try:

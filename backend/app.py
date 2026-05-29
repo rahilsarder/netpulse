@@ -244,22 +244,79 @@ def register_routes(app: Flask) -> None:
             min_value=10,
             max_value=24 * 60 * 60,
         )
-        return jsonify({"degraded_alert_persist_seconds": persist_seconds})
+        reminder_minutes = _get_setting_int(
+            "incident_reminder_minutes",
+            settings.incident_reminder_minutes,
+            min_value=0,
+            max_value=24 * 60,
+        )
+        return jsonify(
+            {
+                "degraded_alert_persist_seconds": persist_seconds,
+                "incident_reminder_minutes": reminder_minutes,
+            }
+        )
 
     @app.put("/api/settings/alerts")
     def update_alert_settings() -> Any:
         payload = request.get_json(silent=True) or {}
-        if "degraded_alert_persist_seconds" not in payload:
-            return jsonify({"error": "degraded_alert_persist_seconds is required"}), 400
+        if (
+            "degraded_alert_persist_seconds" not in payload
+            and "incident_reminder_minutes" not in payload
+        ):
+            return (
+                jsonify(
+                    {
+                        "error": (
+                            "Provide at least one of: degraded_alert_persist_seconds, "
+                            "incident_reminder_minutes"
+                        )
+                    }
+                ),
+                400,
+            )
 
-        try:
-            persist_seconds = int(payload["degraded_alert_persist_seconds"])
-        except (TypeError, ValueError):
-            return jsonify({"error": "degraded_alert_persist_seconds must be an integer"}), 400
+        response_payload: Dict[str, int] = {}
 
-        persist_seconds = max(10, min(persist_seconds, 24 * 60 * 60))
-        _upsert_setting("degraded_alert_persist_seconds", str(persist_seconds))
-        return jsonify({"degraded_alert_persist_seconds": persist_seconds})
+        if "degraded_alert_persist_seconds" in payload:
+            try:
+                persist_seconds = int(payload["degraded_alert_persist_seconds"])
+            except (TypeError, ValueError):
+                return (
+                    jsonify({"error": "degraded_alert_persist_seconds must be an integer"}),
+                    400,
+                )
+
+            persist_seconds = max(10, min(persist_seconds, 24 * 60 * 60))
+            _upsert_setting("degraded_alert_persist_seconds", str(persist_seconds))
+            response_payload["degraded_alert_persist_seconds"] = persist_seconds
+
+        if "incident_reminder_minutes" in payload:
+            try:
+                reminder_minutes = int(payload["incident_reminder_minutes"])
+            except (TypeError, ValueError):
+                return jsonify({"error": "incident_reminder_minutes must be an integer"}), 400
+
+            reminder_minutes = max(0, min(reminder_minutes, 24 * 60))
+            _upsert_setting("incident_reminder_minutes", str(reminder_minutes))
+            response_payload["incident_reminder_minutes"] = reminder_minutes
+
+        if "degraded_alert_persist_seconds" not in response_payload:
+            response_payload["degraded_alert_persist_seconds"] = _get_setting_int(
+                "degraded_alert_persist_seconds",
+                settings.degraded_alert_persist_seconds,
+                min_value=10,
+                max_value=24 * 60 * 60,
+            )
+        if "incident_reminder_minutes" not in response_payload:
+            response_payload["incident_reminder_minutes"] = _get_setting_int(
+                "incident_reminder_minutes",
+                settings.incident_reminder_minutes,
+                min_value=0,
+                max_value=24 * 60,
+            )
+
+        return jsonify(response_payload)
 
 
 def _latest_results_by_probe_source() -> List[Dict[str, Any]]:

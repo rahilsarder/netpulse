@@ -13,6 +13,8 @@ export default function ProbeManagementModal({
   mutationError,
   alertPersistSeconds,
   onChangeAlertPersistSeconds,
+  incidentReminderMinutes,
+  onChangeIncidentReminderMinutes,
   onSaveAlertSettings,
   isSavingAlertSettings,
   alertSettingsError,
@@ -52,6 +54,10 @@ export default function ProbeManagementModal({
               Degraded alerts (high latency/packet loss) trigger only when issue persists for this
               many seconds.
             </p>
+            <p className="mt-1 text-xs text-slate-400">
+              Incident reminder sends repeat notifications every N minutes while an incident stays
+              active (set 0 to disable reminders).
+            </p>
 
             {alertSettingsError ? (
               <div className="mt-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
@@ -69,6 +75,19 @@ export default function ProbeManagementModal({
                 className="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
               />
               <span className="text-xs text-slate-400">seconds</span>
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-2">
+              <input
+                type="number"
+                min={0}
+                max={1440}
+                value={incidentReminderMinutes}
+                onChange={(event) =>
+                  onChangeIncidentReminderMinutes(Number(event.target.value))
+                }
+                className="w-40 rounded-lg border border-slate-700 bg-slate-950 px-3 py-2 text-sm text-slate-100 outline-none focus:border-cyan-400"
+              />
+              <span className="text-xs text-slate-400">minutes (0 = off)</span>
               <button
                 type="button"
                 onClick={onSaveAlertSettings}
