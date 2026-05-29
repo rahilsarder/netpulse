@@ -6,6 +6,7 @@ from typing import Any, Dict, List
 from apscheduler.schedulers.background import BackgroundScheduler
 from flask import Flask, jsonify, request
 from flask_cors import CORS
+from sqlalchemy import and_, func
 
 from config import settings
 from database import db
@@ -320,18 +321,29 @@ def register_routes(app: Flask) -> None:
 
 
 def _latest_results_by_probe_source() -> List[Dict[str, Any]]:
+    latest_per_key = (
+        db.session.query(
+            ProbeResult.probe_id.label("probe_id"),
+            ProbeResult.source.label("source"),
+            func.max(ProbeResult.checked_at).label("max_checked_at"),
+        )
+        .group_by(ProbeResult.probe_id, ProbeResult.source)
+        .subquery()
+    )
+
     rows = (
         db.session.query(ProbeResult)
-        .order_by(ProbeResult.probe_id, ProbeResult.source, ProbeResult.checked_at.desc())
+        .join(
+            latest_per_key,
+            and_(
+                ProbeResult.probe_id == latest_per_key.c.probe_id,
+                ProbeResult.source == latest_per_key.c.source,
+                ProbeResult.checked_at == latest_per_key.c.max_checked_at,
+            ),
+        )
         .all()
     )
-    latest_by_key: Dict[str, ProbeResult] = {}
-    for row in rows:
-        key = f"{row.probe_id}:{row.source}"
-        if key not in latest_by_key:
-            latest_by_key[key] = row
-
-    return [item.to_dict() for item in latest_by_key.values()]
+    return [row.to_dict() for row in rows]
 
 
 def _seed_default_source() -> None:
